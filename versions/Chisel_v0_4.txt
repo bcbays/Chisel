@@ -3,8 +3,13 @@ var VERSION = "v0.4"
 var AUTHOR = "fruloo\n   & Sven"
 
 // Instructions
-// Import using: import UI/Chisel
+// For Mobile or PC:
+// Copy and paste into your mindstone.
 //
+// For PC Only:
+// Download the script to your stonescript folder and import with `import YOUR_PATH_HERE/Chisel.txt`.
+//
+// Usage
 // 1) Enter Deadwood Waterfall.
 // 2) Select the desired glyph from the right panel.
 // 3) Use mouse or touchscreen to draw on the center panel.
