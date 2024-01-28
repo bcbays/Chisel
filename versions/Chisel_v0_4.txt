@@ -1,0 +1,471 @@
+﻿var TITLE = "Chisel"
+var VERSION = "v0.4"
+var AUTHOR = "fruloo\n   & Sven"
+
+// Instructions
+// Import using: import UI/Chisel
+//
+// 1) Enter Deadwood Waterfall.
+// 2) Select the desired glyph from the right panel.
+// 3) Use mouse or touchscreen to draw on the center panel.
+
+// Changelog
+// v0.4 (2024-01-28) -Sven
+//    Rearranged Glyph Table
+//    Made Layout maximize to adapt to screen size
+//    Added Exit Button and removed Default Pause button
+//    Disabled banner and stopped ambient sound
+//    Added check to replace grappling hook with throwing stone
+//    Changed logo to reflect a chiseling set
+// v0.3 (2023-11-05)
+//    Added brush size option.
+//    Added three brush style options, rectangle, circle, and diamond.
+//    Extended palette selection region so it's possible to select the blank region at the bottom.
+// v0.2 (2023-11-05)
+//    Added right mouse button drawing. (PC only)
+//    Improved UI design.
+//    Fixed layout issues for certain screen sizes.
+// v0.1 (2023-11-05)
+//    Initial release.
+
+var LOGO = ascii
+,╦◘
+♦║▼
+║║║
+asciiend
+
+// UI Factory
+
+func MakePanel(parent, x, y, w, h, color, style)
+  var panel = ui.AddPanel()
+  panel.x = x
+  panel.y = y
+  panel.w = w
+  panel.h = h 
+  panel.anchor = top_left
+  panel.dock = top_left
+  ?color ! null
+    panel.color = color
+  ?style ! null
+    panel.style = style
+  ?parent ! null
+    parent.Add(panel)
+  return panel
+
+func MakeButton(x, y, w, h, text, style, onPressedFn)
+  var btn = ui.AddButton()
+  btn.x = x
+  btn.y = y
+  btn.w = w
+  btn.h = h
+  btn.anchor = top_left
+  btn.dock = top_left
+  ?text ! null
+    btn.text = text
+  :
+    btn.text = ""
+  ?style ! null
+    btn.style = style
+  ?onPressedFn ! null
+    btn.SetPressed(onPressedFn)
+  btn.visible = inherit
+  return btn
+
+func MakeSprite(x, y, w, h, color, spriteStr)
+  var sprite = ui.AddAnim(spriteStr)
+  sprite.x = x
+  sprite.y = y
+  sprite.w = w
+  sprite.h = h
+  sprite.anchor = top_left
+  sprite.dock = top_left
+  sprite.color = color
+  sprite.visible = inherit
+  return sprite
+
+func MakeText(x, y, w, h, align, content)
+  var text = ui.AddText()
+  text.x = x
+  text.y = y
+  text.w = w
+  text.h = h
+  text.anchor = top_left
+  text.dock = top_left
+  ?align ! null
+    text.align = align
+  ?content ! null
+    text.text = content
+  return text
+
+// Assets
+
+var StyleInvisible = ui.AddStyle("
+^###
+^###
+^###")
+
+var StyleBrackets = ui.AddStyle("
+^###
+^[#]
+^###")
+
+var AsciiPalette = ascii
+⚿§†☤❄☼☆♂♀°☺ʘ◙◘⏹
+❤♦♣♠♪♫ ↑→↓←▲▶▼◀
+@$%&€£￥₩!¡?¿:;*
+,….·•'＂´`¯-_┊|
+≡=≠≈~÷+±≤≥<>«»^
+/\[]{}()░▒▓█▄▀
+ABCDEFGHIJKLM
+NOPQRSTUVWXYZ
+abcdefghijklm
+nopqrstuvwxyz 
+0123456789
+ãäâáàåÄÅÁÀëêéèÉ
+ïîíìõöôóòÖñüûúù
+ÜýçÇÑ Ææœ∞
+αβγ∆δεέζηΘιλ
+μξπρΣστΦφψΩω
+┌┬┐╔╦╗╒╤╕╓╥╖⌐ ¬ 
+├┼┤╠╬╣╞╪╡╟╫╢║ │ 
+└┴┘╚╩╝╘╧╛╙╨╜═ ─
+asciiend
+
+// Main
+
+var initialized = false
+
+var basePanel = null
+
+var canvasPanel = null
+var canvasPanelTitle = null
+var canvasButton = null
+var canvas = null
+
+var palettePanel = null
+var palettePanelTitle = null
+var palleteTable = null
+var palleteButton = null
+
+var toolsPanel = null
+var toolsPanelTitle = null
+var toolsGlyphPanelL = null
+var toolsGlyphGlyphL = null
+var toolsGlyphPanelR = null
+var toolsGlyphGlyphR = null
+var toolsSwapGlyphLR = null
+var toolSwap = null
+
+var toolBrushSizeLabel = null
+var toolBrushSizeInc = null
+var toolBrushSizeDec = null
+var toolBrushSizeValue = null
+
+var toolBrushStyleLabel = null
+var toolBrushStyleRect = null
+var toolBrushStyleCircle = null
+var toolBrushStyleDiamond = null
+
+var toolClear = null
+var toolClose = null
+
+var titleText = null
+var authorText = null
+var logoSprite = null
+
+var BrushType_Rect = "BrushType:Rect"
+var BrushType_Circle = "BrushType:Circle"
+var BrushType_Diamond = "BrushType:Diamond"
+
+var brushSizeMax = 20
+var brushSize = 1
+var brushStyle = BrushType_Rect
+
+var isDrawingL = false
+var lastDrawTimeL = null
+var currentGlyphL = "o"
+var isDrawingR = false
+var lastDrawTimeR = null
+var currentGlyphR = " "
+
+func Init()
+  ?initialized
+    return
+  
+  disable hud
+  disable banner
+  disable pause  
+  disable abilities
+  disable loadout input
+  ambient.Stop()
+
+
+
+  basePanel = MakePanel(null, 0, 0, screen.w, screen.h, null, StyleInvisible)
+
+  // Canvas
+  canvasPanel = MakePanel(basePanel, 18, 0, basePanel.w - 36, basePanel.h, null, null)
+  canvasPanel.color = "#565656"
+  canvasPanelTitle = MakeText(2, 0, 12, 1, "left", "Canvas " + canvasPanel.w + "x" + canvasPanel.h)
+  canvasPanelTitle.color = "#565656"
+  canvasPanel.Add(canvasPanelTitle)
+
+  canvasButton = MakeButton(1, 1, canvasPanel.w - 2, canvasPanel.h - 2, null, StyleInvisible, null)
+  canvasButton.SetDown(StartDrawingL)
+  canvasButton.SetUp(EndDrawingL)
+  canvasButton.hcolor = "#000000"
+  canvasButton.sound = null
+  canvasPanel.Add(canvasButton)
+  canvas = ui.AddCanvas()
+  canvas.x = 1
+  canvas.y = 1
+  canvas.w = canvasPanel.w - 2
+  canvas.h = canvasPanel.h - 2
+  canvas.dock = top_left
+  canvas.anchor = top_left
+  canvas.SetFG("#ffffff")
+  canvas.SetBG("#000000")
+  canvasPanel.Add(canvas)
+
+  // Palette
+  palettePanel = MakePanel(basePanel, 0, 0, 18, basePanel.h, null, null)
+  palettePanel.color = "#565656"
+  palettePanelTitle = MakeText(2, 0, 12, 1, "left", "Palette")
+  palettePanelTitle.color = "#565656"
+  palettePanel.Add(palettePanelTitle)
+
+  palleteButton = MakeButton(1, 1, 16, 19, null, StyleInvisible, CheckPaletteSelectL)
+  palleteButton.hcolor = "#000000"
+  palettePanel.Add(palleteButton)
+  palleteTable = MakeSprite(1, 1, 16, 19, "#ffffff", AsciiPalette)
+  palettePanel.Add(palleteTable)
+
+  // Tools
+  toolsPanel = MakePanel(basePanel, basePanel.w - 18, 0, 18, basePanel.h, null, null)
+  toolsPanel.color = "#565656"
+  toolsPanelTitle = MakeText(2, 0, 12, 1, "left", "Tools")
+  toolsPanelTitle.color = "#565656"
+  toolsPanel.Add(toolsPanelTitle)
+
+  toolsGlyphPanelL = MakePanel(toolsPanel, 1, 1, 5, 3, null, null)
+  toolsGlyphGlyphL = MakeText(2, 1, 1, 1, "center", currentGlyphL)
+  toolsGlyphPanelL.Add(toolsGlyphGlyphL)
+
+  toolsGlyphPanelR = MakePanel(toolsPanel, 6, 1, 5, 3, null, null)
+  toolsGlyphGlyphR = MakeText(2, 1, 1, 1, "center", currentGlyphR)
+  toolsGlyphPanelR.Add(toolsGlyphGlyphR)
+
+  toolSwap = MakeButton(11, 1, 6, 3, "Swap", null, SwapLR)
+  toolsPanel.Add(toolSwap)
+  toolClear = MakeButton(1, 13, 16, 3, "Clear Canvas", null, ClearCanvas)
+  toolsPanel.Add(toolClear)
+  toolClose = MakeButton(1, 17, 16, 3, "Close Chisel", null, CloseChisel)
+  toolsPanel.Add(toolClose)
+
+  toolBrushSizeLabel = MakeText(1, 5, 6, 1, "left", "Size")
+  toolsPanel.Add(toolBrushSizeLabel)
+  toolBrushSizeDec = MakeButton(7, 4, 3, 3, "-", StyleBrackets, DecBrushSize)
+  toolsPanel.Add(toolBrushSizeDec)
+  toolBrushSizeInc = MakeButton(14, 4, 3, 3, "+", StyleBrackets, IncBrushSize)
+  toolsPanel.Add(toolBrushSizeInc)
+  toolBrushSizeValue = MakeText(10, 5, 3, 1, "right", "" + brushSize)
+  toolsPanel.Add(toolBrushSizeValue)
+
+  toolBrushStyleLabel = MakeText(1, 8, 6, 1, "left", "Style")
+  toolsPanel.Add(toolBrushStyleLabel)
+  toolBrushStyleRect = MakeButton(7, 7, 3, 3, "█", StyleBrackets, PickBrushTypeRect)
+  toolsPanel.Add(toolBrushStyleRect)
+  toolBrushStyleCircle = MakeButton(10, 7, 3, 3, "•", StyleInvisible, PickBrushTypeCircle)
+  toolsPanel.Add(toolBrushStyleCircle)
+  toolBrushStyleDiamond = MakeButton(13, 7, 3, 3, "♦", StyleInvisible, PickBrushTypeDiamond)
+  toolsPanel.Add(toolBrushStyleDiamond)
+
+  // About
+  titleText = MakeText(1, basePanel.h - 4, 16, 1, "left", TITLE + " " + VERSION)
+  toolsPanel.Add(titleText)
+  authorText = MakeText(1, basePanel.h - 3, 16, 1, "left", "by " + AUTHOR)
+  toolsPanel.Add(authorText)
+  logoSprite = MakeSprite(14, basePanel.h - 4, 4, 3, "#ffffff", LOGO)
+  toolsPanel.Add(logoSprite)
+
+  // Enable right mouse drawing on PC
+  ?sys.isPC
+    key.Bind("BumpL", "Z", "Mouse1")
+
+  initialized = true
+
+// Util
+
+func PointInRect(px, py, rx, ry, rw, rh)
+  return px >= rx & px < (rx + rw) & py >= ry & py < (ry + rh)
+  
+// Palette
+
+func CheckPaletteSelectL()
+  var dx = input.x - palleteTable.absoluteX
+  var dy = input.y - palleteTable.absoluteY
+
+  ?PointInRect(dx, dy, 0, 0, palleteTable.w, palleteTable.h)
+    currentGlyphL = draw.GetSymbol(input.x, input.y)
+    toolsGlyphGlyphL.text = currentGlyphL
+
+func CheckPaletteSelectR()
+  var dx = input.x - palleteTable.absoluteX
+  var dy = input.y - palleteTable.absoluteY
+
+  ?PointInRect(dx, dy, 0, 0, palleteTable.w, palleteTable.h)
+    currentGlyphR = draw.GetSymbol(input.x, input.y)
+    toolsGlyphGlyphR.text = currentGlyphR
+
+// Canvas
+
+func CanvasDrawGlyph(x, y, glyph)
+  ?PointInRect(x, y, 0, 0, canvas.w, canvas.h)
+    canvas.Set(x, y, glyph)
+
+func CanvasDrawRect(dx, dy, r, glyph)
+  for i = (-r)..r
+    for j = (-r)..r
+      CanvasDrawGlyph(dx + i, dy + j, glyph)
+
+func CanvasDrawCircle(dx, dy, r, glyph)
+  for i = (-r)..r
+    for j = (-r)..r
+      ?(i*i + j*j) <= r*r + 0.5
+        CanvasDrawGlyph(dx + i, dy + j, glyph)
+
+func CanvasDrawDiamond(dx, dy, r, glyph)
+  for i = (-r)..r
+    for j = (-r)..r
+      ?(math.Abs(i) + math.Abs(j)) <= r
+        CanvasDrawGlyph(dx + i, dy + j, glyph)
+
+func StartDrawingL()
+  var dx = input.x - canvas.absoluteX
+  var dy = input.y - canvas.absoluteY
+  ?PointInRect(dx, dy, 0, 0, canvas.w, canvas.h)
+    isDrawingL = true
+
+func EndDrawingL()
+  isDrawingL = false
+
+func CanvasDrawL()
+  var dx = input.x - canvas.absoluteX
+  var dy = input.y - canvas.absoluteY
+
+  ?PointInRect(dx, dy, 0, 0, canvas.w, canvas.h)
+    ?brushSize = 1
+      CanvasDrawGlyph(dx, dy, currentGlyphL)
+    :?brushStyle = BrushType_Rect
+      CanvasDrawRect(dx, dy, brushSize, currentGlyphL)
+    :?brushStyle = BrushType_Circle
+      CanvasDrawCircle(dx, dy, brushSize, currentGlyphL)
+    :?brushStyle = BrushType_Diamond
+      CanvasDrawDiamond(dx, dy, brushSize, currentGlyphL)
+  lastDrawTimeL = time.msbn
+
+func StartDrawingR()
+  var dx = input.x - canvas.absoluteX
+  var dy = input.y - canvas.absoluteY
+  ?PointInRect(dx, dy, 0, 0, canvas.w, canvas.h)
+    isDrawingR = true
+
+func EndDrawingR()
+  isDrawingR = false
+
+func CanvasDrawR()
+  var dx = input.x - canvas.absoluteX
+  var dy = input.y - canvas.absoluteY
+
+  ?PointInRect(dx, dy, 0, 0, canvas.w, canvas.h)
+    ?brushSize = 1
+      CanvasDrawGlyph(dx, dy, currentGlyphR)
+    :?brushStyle = BrushType_Rect
+      CanvasDrawRect(dx, dy, brushSize, currentGlyphR)
+    :?brushStyle = BrushType_Circle
+      CanvasDrawCircle(dx, dy, brushSize, currentGlyphR)
+    :?brushStyle = BrushType_Diamond
+      CanvasDrawDiamond(dx, dy, brushSize, currentGlyphR)
+    
+  lastDrawTimeR = time.msbn
+
+// Tools
+
+func SwapLR()
+  var temp = currentGlyphL
+  currentGlyphL = currentGlyphR
+  currentGlyphR = temp
+  toolsGlyphGlyphL.text = currentGlyphL
+  toolsGlyphGlyphR.text = currentGlyphR
+
+func PickBrushTypeRect()
+  brushStyle = BrushType_Rect
+  toolBrushStyleRect.style = StyleBrackets
+  toolBrushStyleCircle.style = StyleInvisible
+  toolBrushStyleDiamond.style = StyleInvisible
+
+func PickBrushTypeCircle()
+  brushStyle = BrushType_Circle
+  toolBrushStyleRect.style = StyleInvisible
+  toolBrushStyleCircle.style = StyleBrackets
+  toolBrushStyleDiamond.style = StyleInvisible
+
+func PickBrushTypeDiamond()
+  brushStyle = BrushType_Diamond
+  toolBrushStyleRect.style = StyleInvisible
+  toolBrushStyleCircle.style = StyleInvisible
+  toolBrushStyleDiamond.style = StyleBrackets
+
+func IncBrushSize()
+  brushSize++
+  ?brushSize > brushSizeMax
+    brushSize = brushSizeMax
+  toolBrushSizeValue.text = "" + brushSize
+
+func DecBrushSize()
+  brushSize--
+  ?brushSize < 1
+    brushSize = 1
+  toolBrushSizeValue.text = "" + brushSize
+
+func ClearCanvas()
+  canvas.Set(" ")
+
+func CloseChisel()
+  loc.Leave()
+
+func Run()
+  ?!initialized
+    Init()
+
+  ?lastDrawTimeL ! null & (time.msbn).Sub(lastDrawTimeL).Ge(90)
+    isDrawingL = false
+
+  ?isDrawingL
+    CanvasDrawL()
+  :
+    lastDrawTimeL = null
+
+  ?sys.isPC
+    ?key = bumpLBegin
+      CheckPaletteSelectR()
+      StartDrawingR()
+    ?key = bumpLEnd
+      EndDrawingR()
+
+    ?lastDrawTimeR ! null & (time.msbn).Sub(lastDrawTimeR).Ge(90)
+      isDrawingR = false
+
+    ?isDrawingR
+      CanvasDrawR()
+    :
+      lastDrawTimeR = null
+
+  // Testing layout
+  // >`1,@screen.h - 1@,Screen @screen.w@x@screen.h@
+
+?string.Equals(loc.id, waterfall)
+  Run()
+
+?item.left = grappling hook
+  equip shovel

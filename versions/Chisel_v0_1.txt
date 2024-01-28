@@ -1,0 +1,222 @@
+var TITLE = "Chisel"
+var VERSION = "v0.1"
+var AUTHOR = "fruloo"
+
+// Instructions
+// 1) Enter Deadwood Waterfall.
+// 2) Select the desired glyph from the right panel.
+// 3) Use mouse or touchscreen to draw on the center panel.
+
+var LOGO = ascii
+##/7
+#//#
+´¯`-
+asciiend
+
+// UI Factory
+
+func MakePanel(parent, x, y, w, h, color, style)
+  var panel = ui.AddPanel()
+  panel.x = x
+  panel.y = y
+  panel.w = w
+  panel.h = h 
+  panel.ax = left
+  panel.dx = left
+  panel.ay = top
+  panel.dy = top
+  ?color ! null
+    panel.color = color
+  ?style ! null
+    panel.style = style
+  ?parent ! null
+    parent.Add(panel)
+  return panel
+
+func MakeButton(x, y, w, h, text, style, onPressedFn)
+  var btn = ui.AddButton()
+  btn.x = x
+  btn.y = y
+  btn.w = w
+  btn.h = h
+  btn.anchor = top_left
+  btn.dock = top_left
+  ?text ! null
+    btn.text = text
+  :
+    btn.text = ""
+  ?style ! null
+    btn.style = style
+  ?onPressedFn ! null
+    btn.SetPressed(onPressedFn)
+  // ?onDownFn ! null
+  //   btn.SetDown(onDownFn)
+  // ?onUpFn ! null
+  //   btn.SetUp(onUpFn)
+  btn.visible = inherit
+  return btn
+
+func MakeSprite(x, y, w, h, color, spriteStr)
+  var sprite = ui.AddAnim(spriteStr)
+  sprite.x = x
+  sprite.y = y
+  sprite.w = w
+  sprite.h = h
+  sprite.color = color
+  sprite.visible = inherit
+  return sprite
+
+func MakeText(x, y, w, h, align, anchor, dock, content)
+  var text = ui.AddText()
+  text.x = x
+  text.y = y
+  text.w = w
+  text.h = h
+  ?align ! null
+    text.align = align
+  ?anchor ! null
+    text.anchor = anchor
+  ?anchor ! null
+    text.dock = dock
+  ?content ! null
+    text.text = content
+  return text
+
+// Assets
+
+var StyleInvisible = ui.AddStyle("
+^###
+^###
+^###")
+
+var AsciiPalette = ascii
+☆☺ʘ❤♦♣♠•◘⏹◙♂♀♪♫☼
+▶◀À⚿œ§≠¿↑↓→←¯¡▲▼
+ !＂#$%&'()*+,-./
+0123456789:;<=>?
+@ABCDEFGHIJKLMNO
+PQRSTUVWXYZ[\]^_
+`abcdefghijklmno
+pqrstuvwxyz{|}~´
+ÇüéâäàåçêëèïîìÄÅ
+ÉæÆôöòûùýÖÜ€£￥₩Á
+áíóúñÑãõζηξλψέ«»
+░▒▓│┤╡╢╖╕╣║╗╝╜╛┐
+└┴┬├─┼╞╟╚╔╩╦╠═╬╧
+╨╤╥╙╘╒╓╫╪┘┌█▄▀ρι
+αβγπΣσμτΦΘΩδ∞φεω
+≡±≥≤⌐¬÷≈°…·†☤∆❄┊
+asciiend
+
+// Main
+
+var initialized = false
+
+var basePanel = null
+
+var canvasPanel = null
+var canvasButton = null
+var canvas = null
+
+var palettePanel = null
+var palleteTable = null
+var palleteButton = null
+
+var toolsPanel = null
+var toolsGlyphPanel = null
+var toolsGlyphGlyph = null
+var toolClear = null
+
+var titleText = null
+var authorText = null
+var logoSprite = null
+
+var isDrawing = false
+var currentGlyph = "o"
+var lastDrawTime = null
+
+func Init()
+  ?initialized
+    return
+  basePanel = MakePanel(null, 5, 3, screen.w - 10, screen.h - 6, null, StyleInvisible)
+
+  canvasPanel = MakePanel(basePanel, 18, 0, basePanel.w - 36, basePanel.h, null, null)
+  canvasButton = MakeButton(1, 1, canvasPanel.w - 2, canvasPanel.h - 2, null, StyleInvisible, null)
+  canvasButton.SetDown(StartDrawing)
+  canvasButton.SetUp(EndDrawing)
+  canvasButton.hcolor = "#000000"
+  canvasPanel.Add(canvasButton)
+  canvas = ui.AddCanvas()
+  canvas.x = 0
+  canvas.y = 0
+  canvas.w = canvasPanel.w - 2
+  canvas.h = canvasPanel.h - 2
+  canvas.SetFG("#ffffff")
+  canvas.SetBG("#000000")
+  canvasPanel.Add(canvas)
+
+  palettePanel = MakePanel(basePanel, 0, 0, 18, basePanel.h, null, null)
+  palleteButton = MakeButton(1, 1, 16, 16, null, StyleInvisible, CheckPaletteSelect)
+  palleteButton.hcolor = "#000000"
+  palettePanel.Add(palleteButton)
+  palleteTable = MakeSprite(0, -1, 16, 16, "#ffffff", AsciiPalette)
+  palettePanel.Add(palleteTable)
+
+  toolsPanel = MakePanel(basePanel, basePanel.w - 18, 0, 18, basePanel.h, null, null)
+
+  toolsGlyphPanel = MakePanel(toolsPanel, 1, 1, 5, 3, null, null)
+  toolsGlyphGlyph = MakeText(0, 0, 1, 1, "center", null, null, currentGlyph)
+  toolsGlyphPanel.Add(toolsGlyphGlyph)
+
+  toolClear = MakeButton(1, 13, 16, 3, "Clear Canvas", null, ClearCanvas)
+  toolsPanel.Add(toolClear)
+
+  titleText = MakeText(1, 7, 16, 1, "left", null, null, TITLE + " " + VERSION)
+  toolsPanel.Add(titleText)
+  authorText = MakeText(1, 8, 16, 1, "left", null, null, "by " + AUTHOR)
+  toolsPanel.Add(authorText)
+  logoSprite = MakeSprite(5, 8, 4, 3, "#ffffff", LOGO)
+  toolsPanel.Add(logoSprite)
+
+  initialized = true
+
+func CheckPaletteSelect()
+  var dx = input.x - palleteTable.absoluteX
+  var dy = input.y - palleteTable.absoluteY
+
+  ?dx >= 0 & dx < palleteTable.w & dy >= 0 & dy < palleteTable.h
+    currentGlyph = draw.GetSymbol(input.x, input.y)
+    toolsGlyphGlyph.text = currentGlyph
+
+func StartDrawing()
+  isDrawing = true
+
+func EndDrawing()
+  isDrawing = false
+
+func ClearCanvas()
+  canvas.Set(" ")
+
+func CanvasDraw()
+  var dx = input.x - canvas.absoluteX
+  var dy = input.y - canvas.absoluteY
+
+  ?dx >= 0 & dx < canvas.w & dy >= 0 & dy < canvas.h
+    canvas.Set(dx, dy, currentGlyph)
+    
+  lastDrawTime = time.msbn
+
+func Run()
+  ?!initialized
+    Init()
+
+  ?lastDrawTime ! null & (time.msbn).Sub(lastDrawTime).Ge(90)
+    isDrawing = false
+
+  ?isDrawing
+    CanvasDraw()
+  :
+    lastDrawTime = null
+
+?string.Equals(loc.id, waterfall)
+  Run()
